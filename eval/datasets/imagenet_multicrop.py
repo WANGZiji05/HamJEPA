@@ -6,24 +6,13 @@ from typing import List, Tuple
 import torch
 import os
 from torch.utils.data import ConcatDataset, Dataset
-# Direct imports to avoid triggering torchvision.datasets (which needs requests)
-from torchvision.transforms import (
-    ColorJitter,
-    Compose,
-    GaussianBlur,
-    Normalize,
-    RandomApply,
-    RandomGrayscale,
-    RandomHorizontalFlip,
-    RandomResizedCrop,
-    RandomSolarize,
-    ToTensor,
-)
-# Lazy import: ImageFolder is only needed for ImageNet datasets, not Physion
-# from torchvision.datasets import ImageFolder
 
 _MEAN = (0.485, 0.456, 0.406)
 _STD = (0.229, 0.224, 0.225)
+
+# All torchvision imports are lazy to avoid triggering the import chain
+#   torchvision → datasets → _optical_flow → utils → requests
+# which breaks on compute nodes without network access.
 
 
 @dataclass(frozen=True)
@@ -49,7 +38,21 @@ class MultiCropCfg:
     cj_hue: float = 0.1
 
 
-def _build_transform(cfg: MultiCropCfg, *, scale: Tuple[float, float]) -> Compose:
+def _build_transform(cfg: MultiCropCfg, *, scale: Tuple[float, float]):
+    """Build a multi-crop transform pipeline. All torchvision imports are lazy."""
+    from torchvision.transforms import (  # noqa: E402 (lazy import)
+        ColorJitter,
+        Compose,
+        GaussianBlur,
+        Normalize,
+        RandomApply,
+        RandomGrayscale,
+        RandomHorizontalFlip,
+        RandomResizedCrop,
+        RandomSolarize,
+        ToTensor,
+    )
+
     color_jitter = ColorJitter(
         brightness=cfg.cj_brightness,
         contrast=cfg.cj_contrast,
@@ -122,11 +125,11 @@ def _resolve_split_roots(root: str, split: str) -> List[str]:
 
 
 def _build_imagefolder_concat(roots: List[str]) -> Dataset:
-    from torchvision.datasets import ImageFolder  # lazy import (needs requests on some envs)
+    from torchvision.datasets import ImageFolder  # noqa: E402 (lazy import, needs requests)
 
     if not roots:
         raise RuntimeError("No dataset roots found for the requested split.")
-    datasets: List[ImageFolder] = []
+    datasets = []
     ref_classes = None
     for r in roots:
         ds = ImageFolder(root=r, transform=None)
