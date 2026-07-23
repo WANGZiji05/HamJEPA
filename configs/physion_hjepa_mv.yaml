@@ -21,7 +21,7 @@ data:
   root: /research/d7/spc/yrwang5/V-JEPA/data/
 
   batch_size: 64
-  num_workers: 4
+  num_workers: 8
   pin_memory: true
   persistent_workers: true
   prefetch_factor: 2
@@ -31,6 +31,15 @@ data:
   out_size: 224
   global_scale: [0.4, 1.0]
   local_scale: [0.05, 0.4]
+
+  # Lighter augmentations for Physion++ (GaussianBlur is very slow on CPU)
+  aug:
+    blur_p: 0.0
+    solarize_p: 0.0
+    grayscale_p: 0.1
+
+  # Use subset of videos for faster training (8000 total → 1000)
+  max_videos: 1000
 
 model:
   encoder_mode: tokens

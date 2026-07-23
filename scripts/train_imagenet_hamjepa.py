@@ -203,15 +203,26 @@ def main():
     local_scale = _to_tuple(data_cfg.get("local_scale", None), (0.05, 0.3))
     out_size = int(data_cfg.get("out_size", 32))
 
+    # Optional augmentation overrides (for speed-critical datasets like Physion++)
+    aug_cfg = data_cfg.get("aug", {})
     mc_cfg = MultiCropCfg(
         num_global_views=int(num_global_views),
         num_local_views=int(num_local_views),
         out_size=out_size,
         global_scale=global_scale,
         local_scale=local_scale,
+        blur_p=float(aug_cfg.get("blur_p", 0.5)),
+        solarize_p=float(aug_cfg.get("solarize_p", 0.2)),
+        grayscale_p=float(aug_cfg.get("grayscale_p", 0.2)),
+        cj_p=float(aug_cfg.get("cj_p", 0.8)),
+        hflip_p=float(aug_cfg.get("hflip_p", 0.5)),
     )
 
-    dataset = ImageNetMultiCrop(root=root, split="train", cfg=mc_cfg)
+    # Allow config to limit videos (Physion++) or other dataset-specific kwargs
+    extra_ds_kwargs = {}
+    if data_cfg.get("max_videos") is not None:
+        extra_ds_kwargs["max_videos"] = int(data_cfg["max_videos"])
+    dataset = ImageNetMultiCrop(root=root, split="train", cfg=mc_cfg, **extra_ds_kwargs)
     pin_memory = bool(data_cfg.get("pin_memory", device.type == "cuda"))
     persistent_workers = bool(data_cfg.get("persistent_workers", num_workers > 0))
     prefetch_factor = data_cfg.get("prefetch_factor", 2)
