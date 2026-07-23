@@ -394,52 +394,30 @@ def run_one_epoch(
             optimizer.zero_grad(set_to_none=True)
 
         # ---- Physion++ data format ----
-        # data[0]: video frames (list of lists of tensors or tensor)
-        # data[1]: OCP labels [B]
+        # Default collate produces: data[0] = [tensor(B,T,C,H,W)] (list of 1 tensor)
         clips = data[0]
         labels = data[1].to(device)
         bs = len(labels)
 
-        # ---- Unwrap nested list from PhysionDataset ----
-        # Expected: [[tensor[C,T,H,W]], ...] or tensor [B, C, T, H, W]
+        # ---- Unwrap to tensor [B, T, C, H, W] ----
         if isinstance(clips, list):
-            # Process each sample in batch individually
-            batch_feats = []
-            for i in range(bs):
-                item = clips[i]
-                if isinstance(item, list):
-                    if len(item) == 0:
-                        continue
-                    frame_tensor = item[0]  # tensor [C, T, H, W]
-                else:
-                    frame_tensor = item
+            while isinstance(clips, list) and len(clips) > 0:
+                clips = clips[0]
+        # clips: [B, T, C, H, W]
 
-                if not isinstance(frame_tensor, torch.Tensor):
-                    continue
+        if not isinstance(clips, torch.Tensor):
+            continue
 
-                # frame_tensor: [C, T, H, W] → permute to [T, C, H, W]
-                if frame_tensor.ndim == 4:
-                    # [C, T, H, W] → [T, C, H, W]
-                    frame_tensor = frame_tensor.permute(1, 0, 2, 3)
+        # ---- Encode all frames via HamJEPA (per-frame, batched) ----
+        B, T, C, H, W = clips.shape
+        clips = clips.to(device=device, dtype=next(encoder.parameters()).dtype)
+        # Reshape to [B*T, C, H, W] for single-image encoder
+        flat_frames = clips.reshape(B * T, C, H, W)
 
-                with torch.no_grad():
-                    feat = encode_video_frames(encoder, frame_tensor, device)
-                batch_feats.append(feat)
-
-            if len(batch_feats) == 0:
-                continue
-            feats = torch.stack(batch_feats)  # [B, D]
-        else:
-            # Direct tensor format
-            clips = clips.to(device=device, dtype=next(encoder.parameters()).dtype)
-            # [B, C, T, H, W] → process per sample
-            batch_feats = []
-            for i in range(bs):
-                frame_tensor = clips[i].permute(1, 0, 2, 3)  # [C,T,H,W] → [T,C,H,W]
-                with torch.no_grad():
-                    feat = encode_video_frames(encoder, frame_tensor, device)
-                batch_feats.append(feat)
-            feats = torch.stack(batch_feats)
+        with torch.no_grad():
+            flat_feats = encoder(flat_frames)  # [B*T, D]
+        # Reshape back and mean-pool across frames
+        feats = flat_feats.reshape(B, T, -1).mean(dim=1)  # [B, D]
 
         # ---- Slice q/p if split_qp ----
         feats = slice_qp_variant(feats, qp_variant, q_dim)
