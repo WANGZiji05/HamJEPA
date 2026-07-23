@@ -36,8 +36,14 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import sys
+import types
+
+# ── Fake requests module BEFORE any torchvision import ──
+if "requests" not in sys.modules:
+    sys.modules["requests"] = types.ModuleType("requests")
+
+import os
 import logging
 import argparse
 import csv

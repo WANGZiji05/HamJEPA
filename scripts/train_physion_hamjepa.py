@@ -10,6 +10,17 @@ Usage:
 """
 
 import sys
+import types
+
+# ── Fake requests module BEFORE any torchvision import ──
+# torchvision.__init__ unconditionally imports torchvision.datasets, which
+# imports _optical_flow → utils → requests. On compute nodes without network
+# access the SSL module is broken, so pip cannot install requests.
+# We inject a dummy module to satisfy the import chain.
+if "requests" not in sys.modules:
+    _dummy_requests = types.ModuleType("requests")
+    sys.modules["requests"] = _dummy_requests
+
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
