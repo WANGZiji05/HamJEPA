@@ -89,7 +89,7 @@ train:
   weight_decay: 0.0005
   warmup_epochs: 5
   min_lr_ratio: 0.001
-  precision: bf16
+  precision: fp32
   ckpt_dir: checkpoints
   checkpoint_every: 5
 
