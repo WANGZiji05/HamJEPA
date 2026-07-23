@@ -6,8 +6,21 @@ from typing import List, Tuple
 import torch
 import os
 from torch.utils.data import ConcatDataset, Dataset
-from torchvision import transforms
-from torchvision.datasets import ImageFolder
+# Direct imports to avoid triggering torchvision.datasets (which needs requests)
+from torchvision.transforms import (
+    ColorJitter,
+    Compose,
+    GaussianBlur,
+    Normalize,
+    RandomApply,
+    RandomGrayscale,
+    RandomHorizontalFlip,
+    RandomResizedCrop,
+    RandomSolarize,
+    ToTensor,
+)
+# Lazy import: ImageFolder is only needed for ImageNet datasets, not Physion
+# from torchvision.datasets import ImageFolder
 
 _MEAN = (0.485, 0.456, 0.406)
 _STD = (0.229, 0.224, 0.225)
@@ -36,25 +49,25 @@ class MultiCropCfg:
     cj_hue: float = 0.1
 
 
-def _build_transform(cfg: MultiCropCfg, *, scale: Tuple[float, float]) -> transforms.Compose:
-    color_jitter = transforms.ColorJitter(
+def _build_transform(cfg: MultiCropCfg, *, scale: Tuple[float, float]) -> Compose:
+    color_jitter = ColorJitter(
         brightness=cfg.cj_brightness,
         contrast=cfg.cj_contrast,
         saturation=cfg.cj_saturation,
         hue=cfg.cj_hue,
     )
-    blur = transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0))
+    blur = GaussianBlur(kernel_size=23, sigma=(0.1, 2.0))
 
-    return transforms.Compose(
+    return Compose(
         [
-            transforms.RandomResizedCrop(cfg.out_size, scale=scale),
-            transforms.RandomHorizontalFlip(p=cfg.hflip_p),
-            transforms.RandomApply([color_jitter], p=cfg.cj_p),
-            transforms.RandomGrayscale(p=cfg.grayscale_p),
-            transforms.RandomApply([blur], p=cfg.blur_p),
-            transforms.RandomSolarize(threshold=cfg.solarize_thresh, p=cfg.solarize_p),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=_MEAN, std=_STD),
+            RandomResizedCrop(cfg.out_size, scale=scale),
+            RandomHorizontalFlip(p=cfg.hflip_p),
+            RandomApply([color_jitter], p=cfg.cj_p),
+            RandomGrayscale(p=cfg.grayscale_p),
+            RandomApply([blur], p=cfg.blur_p),
+            RandomSolarize(threshold=cfg.solarize_thresh, p=cfg.solarize_p),
+            ToTensor(),
+            Normalize(mean=_MEAN, std=_STD),
         ]
     )
 
@@ -109,6 +122,8 @@ def _resolve_split_roots(root: str, split: str) -> List[str]:
 
 
 def _build_imagefolder_concat(roots: List[str]) -> Dataset:
+    from torchvision.datasets import ImageFolder  # lazy import (needs requests on some envs)
+
     if not roots:
         raise RuntimeError("No dataset roots found for the requested split.")
     datasets: List[ImageFolder] = []

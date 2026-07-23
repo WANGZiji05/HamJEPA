@@ -29,7 +29,6 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision import transforms
 
 # Same augmentations as ImageNetMultiCrop
 from eval.datasets.imagenet_multicrop import MultiCropCfg, _build_transform
