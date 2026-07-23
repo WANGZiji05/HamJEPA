@@ -1,0 +1,89 @@
+# ============================================================================
+# HamJEPA Physion++ Linear Probe Evaluation Config
+# ============================================================================
+#
+# Evaluates a frozen HamJEPA encoder on the Physion++ OCP
+# (Object Contact Prediction) task.
+#
+# Key difference from V-JEPA's attentive probe:
+#   - HamJEPA encodes each frame independently (image-based ResNet),
+#     then mean-pools across frames.
+#   - The probe is a simple Linear or MLP, not cross-attention.
+#
+# Usage:
+#   python -m eval.physion_linear_probe.eval \
+#       --config configs/physion_linear_probe.yaml \
+#       --device cuda:0
+#
+#   # With qp_variant override:
+#   python -m eval.physion_linear_probe.eval \
+#       --config configs/physion_linear_probe.yaml \
+#       --qp_variant q
+#
+# Prerequisites:
+#   1. Prepare Physion++ data (from V-JEPA):
+#        python ../V-JEPA/scripts/prepare_physion_data.py \
+#            --data_root /path/to/physion_data/ \
+#            --output_dir ./physion_csv
+#   2. Train a HamJEPA model (e.g., on ImageNet):
+#        python scripts/train_imagenet_hamjepa.py \
+#            --config configs/imagenet_hjepa_mv.yaml
+# ============================================================================
+
+# ---- Experiment tag ----
+tag: hjepa_probe
+
+# ---- Evaluation mode ----
+#   per_property: train separate probe per physical property (recommended)
+#   joint:        train one probe on all properties mixed
+eval_mode: per_property
+
+# Properties to evaluate (null = all 4)
+# Options: mass, friction, elasticity, deformability
+properties: null
+
+# ---- Probe configuration ----
+# probe_type: linear (LayerNorm + Linear) or mlp (LayerNorm + Linear + ReLU + Linear)
+probe_type: linear
+
+# qp_variant: which part of the latent to probe
+#   qp: full [q|p] concatenated vector (default, full state)
+#   q:  only position component (first half)
+#   p:  only momentum component (second half)
+# Only meaningful for split_qp=True models.
+qp_variant: qp
+
+# ---- Pretrained model ----
+pretrain:
+  # Path to the training YAML config (used to reconstruct encoder architecture)
+  training_config: configs/imagenet_hjepa_mv.yaml
+
+  # Path to the checkpoint file (.pt)
+  checkpoint: checkpoints/imagenet_hjepa_mv/best.pt
+
+  # Key in checkpoint dict for encoder state_dict
+  checkpoint_key: encoder
+
+# ---- Data ----
+data:
+  # Physion++ readout data CSV (for training the probe)
+  # Generate with: python ../V-JEPA/scripts/prepare_physion_data.py
+  dataset_train: ../V-JEPA/physion_csv/readout_data.csv
+
+  # Physion++ test data CSV (for final evaluation)
+  dataset_val: ../V-JEPA/physion_csv/test_data.csv
+
+  # Video clip parameters (same as V-JEPA)
+  frames_per_clip: 16
+  frame_step: 4
+  clip_duration: null
+
+# ---- Optimization ----
+optimization:
+  resolution: 224
+  batch_size: 32
+  num_epochs: 50
+  lr: 0.001
+  weight_decay: 0.0001
+  use_bfloat16: false
+  num_workers: 4

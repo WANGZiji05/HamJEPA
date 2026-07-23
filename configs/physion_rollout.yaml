@@ -1,0 +1,50 @@
+# ============================================================================
+# HamJEPA Physion++ Latent Dynamics (Rollout) Evaluation Config
+# ============================================================================
+#
+# Evaluates whether the HamJEPA Hamiltonian flow predictor captures
+# meaningful temporal dynamics in physical scenes.
+#
+# Core experiment: Prediction Horizon Sweep
+#   For growing temporal gaps (k=1..7 frames apart), measure how well
+#   the predictor maps z_t → z_{t+k}.
+#
+# Comparison with V-JEPA rollout:
+#   - V-JEPA: diffusion-based predictor, self-attention over tokens
+#   - HamJEPA: Hamiltonian flow predictor, symplectic integration
+#
+# Usage:
+#   python -m eval.physion_rollout.eval \
+#       --config configs/physion_rollout.yaml \
+#       --device cuda:0
+# ============================================================================
+
+tag: hjepa_rollout
+
+# Properties to evaluate (null = all 4)
+properties: null
+
+# Prediction horizons: temporal gap between frames (in frame_step units)
+# H=1: nearest frame pairs  (easiest)
+# H=7: furthest frame pairs (hardest)
+horizons: [1, 2, 3, 4, 5, 6, 7]
+
+# Max videos per property (limit for speed)
+max_videos: 200
+
+# ---- Pretrained model ----
+pretrain:
+  training_config: configs/imagenet_hjepa_mv.yaml
+  checkpoint: checkpoints/imagenet_hjepa_mv/best.pt
+
+# ---- Data ----
+data:
+  # Physion++ test data CSV
+  dataset: ../V-JEPA/physion_csv/test_data.csv
+
+  frames_per_clip: 16
+  frame_step: 4
+
+# ---- Inference ----
+optimization:
+  resolution: 224
