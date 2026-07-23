@@ -68,18 +68,24 @@ def save_checkpoint(
     projector: torch.nn.Module,
     reg_module: Optional[torch.nn.Module],
     predictor: Optional[torch.nn.Module] = None,
+    optimizer: Optional[torch.optim.Optimizer] = None,
+    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+    global_step: int = 0,
 ) -> None:
-    torch.save(
-        {
-            "config": cfg,
-            "epoch": epoch,
-            "encoder": encoder.state_dict(),
-            "projector": projector.state_dict(),
-            "regularizer": reg_module.state_dict() if reg_module is not None else None,
-            "predictor": predictor.state_dict() if predictor is not None else None,
-        },
-        path,
-    )
+    ckpt_dict = {
+        "config": cfg,
+        "epoch": epoch,
+        "global_step": global_step,
+        "encoder": encoder.state_dict(),
+        "projector": projector.state_dict(),
+        "regularizer": reg_module.state_dict() if reg_module is not None else None,
+        "predictor": predictor.state_dict() if predictor is not None else None,
+    }
+    if optimizer is not None:
+        ckpt_dict["optimizer"] = optimizer.state_dict()
+    if scheduler is not None:
+        ckpt_dict["scheduler"] = scheduler.state_dict()
+    torch.save(ckpt_dict, path)
 
 
 def config_stem(path: str) -> str:
@@ -149,6 +155,8 @@ def build_regularizer(cfg: Dict[str, Any], d: int, device: torch.device):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="configs/imagenet_sigreg_tokens.yaml")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint to resume from (e.g. checkpoints/latest.pth)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -446,7 +454,33 @@ def main():
     imagenet_std = torch.tensor((0.229, 0.224, 0.225), device=device, dtype=torch.float32).view(1, 3, 1, 1)
 
     global_step = 0
-    for epoch in range(1, num_epochs + 1):
+
+    # ── Resume from checkpoint ──
+    latest_path = os.path.join(ckpt_dir, f"{cfg_stem}_latest.pth")
+    resume_path = args.resume or (os.path.exists(latest_path) and latest_path)
+    start_epoch = 1
+    if resume_path and os.path.exists(resume_path):
+        print(f"\n{'='*60}")
+        print(f"Resuming from: {resume_path}")
+        print(f"{'='*60}\n")
+        ckpt = torch.load(resume_path, map_location="cpu")
+        encoder.load_state_dict(ckpt["encoder"])
+        projector.load_state_dict(ckpt["projector"])
+        if predictor is not None and ckpt.get("predictor") is not None:
+            predictor.load_state_dict(ckpt["predictor"])
+        if reg_module is not None and ckpt.get("regularizer") is not None:
+            reg_module.load_state_dict(ckpt["regularizer"])
+        if ckpt.get("optimizer") is not None:
+            opt_main.load_state_dict(ckpt["optimizer"])
+        if ckpt.get("scheduler") is not None and scheduler is not None:
+            scheduler.load_state_dict(ckpt["scheduler"])
+        if ckpt.get("global_step", 0) > 0:
+            global_step = ckpt["global_step"]
+        start_epoch = ckpt.get("epoch", 0) + 1
+        print(f"Resumed from epoch {ckpt.get('epoch', 0)}. Starting at epoch {start_epoch}/{num_epochs}")
+
+    for epoch in range(start_epoch, num_epochs + 1):
+        print(f"\n{'#'*60}\n# EPOCH {epoch}/{num_epochs}\n{'#'*60}")
         epoch_idx0 = epoch - 1
 
         if lambda_reg_warmup_epochs > 0 and epoch_idx0 < lambda_reg_warmup_epochs:
@@ -715,21 +749,40 @@ def main():
                     f"spec={spec_snapshot:.3e}"
                 )
 
-        if is_main and (epoch % ckpt_every == 0):
-            epoch_path = os.path.join(ckpt_dir, f"{cfg_stem}_epoch_{epoch:03d}.pth")
+        # ── Save latest checkpoint after EVERY epoch (for resume) ──
+        if is_main:
             t_ckpt = time.time()
             save_checkpoint(
-                epoch_path,
+                latest_path,
                 cfg=cfg,
                 epoch=epoch,
                 encoder=encoder,
                 projector=projector,
                 reg_module=reg_module,
                 predictor=predictor,
+                optimizer=opt_main,
+                scheduler=scheduler,
+                global_step=global_step,
             )
-            print(f"[ckpt] save took {time.time() - t_ckpt:.1f}s -> {epoch_path}")
+            print(f"[ckpt] latest saved ({time.time() - t_ckpt:.1f}s) -> {latest_path}")
 
-    # save checkpoint
+            if epoch % ckpt_every == 0:
+                epoch_path = os.path.join(ckpt_dir, f"{cfg_stem}_epoch_{epoch:03d}.pth")
+                save_checkpoint(
+                    epoch_path,
+                    cfg=cfg,
+                    epoch=epoch,
+                    encoder=encoder,
+                    projector=projector,
+                    reg_module=reg_module,
+                    predictor=predictor,
+                    optimizer=opt_main,
+                    scheduler=scheduler,
+                    global_step=global_step,
+                )
+                print(f"[ckpt] epoch snapshot -> {epoch_path}")
+
+    # ── Final checkpoint ──
     ckpt_name = f"{cfg_stem}.pth"
     ckpt_path = os.path.join(ckpt_dir, ckpt_name)
     if is_main:
@@ -742,9 +795,11 @@ def main():
             projector=projector,
             reg_module=reg_module,
             predictor=predictor,
+            optimizer=opt_main,
+            scheduler=scheduler,
+            global_step=global_step,
         )
-        print(f"[ckpt] save took {time.time() - t_ckpt:.1f}s -> {ckpt_path}")
-    print(f"Saved checkpoint to {ckpt_path}")
+        print(f"[ckpt] final saved ({time.time() - t_ckpt:.1f}s) -> {ckpt_path}")
 
 
 if __name__ == "__main__":

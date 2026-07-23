@@ -91,7 +91,7 @@ train:
   min_lr_ratio: 0.001
   precision: fp32
   ckpt_dir: checkpoints
-  checkpoint_every: 5
+  checkpoint_every: 1
 
   lambda_budget: 0.2
   lambda_var: 1.0
