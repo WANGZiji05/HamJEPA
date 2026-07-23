@@ -382,10 +382,11 @@ def evaluate_property_rollout(
                 z_t = feats[t_idx:t_idx + 1].to(device)  # [1, D]
                 z_th = feats[t_idx + h:t_idx + h + 1].to(device)  # [1, D]
 
-                # Real prediction
+                # Real prediction (needs grad for dV/dq)
                 if predictor is not None:
-                    z_pred = predictor(z_t, direction=1)
-                    real_sim = F.cosine_similarity(z_pred, z_th, dim=-1).mean().item()
+                    with torch.enable_grad():
+                        z_pred = predictor(z_t.requires_grad_(True), direction=1)
+                    real_sim = F.cosine_similarity(z_pred.detach(), z_th, dim=-1).mean().item()
                 else:
                     # No predictor: use identity baseline
                     real_sim = F.cosine_similarity(z_t, z_th, dim=-1).mean().item()
@@ -420,8 +421,9 @@ def evaluate_property_rollout(
     targets = torch.cat([f.to(device) for f in target_feats], dim=0)  # [N, D]
 
     if predictor is not None:
-        pred_shuffled = predictor(anchors, direction=1)
-        shuff_sims = F.cosine_similarity(pred_shuffled, targets, dim=-1).tolist()
+        with torch.enable_grad():
+            pred_shuffled = predictor(anchors.requires_grad_(True), direction=1)
+        shuff_sims = F.cosine_similarity(pred_shuffled.detach(), targets, dim=-1).tolist()
     else:
         shuff_sims = F.cosine_similarity(anchors, targets, dim=-1).tolist()
 
