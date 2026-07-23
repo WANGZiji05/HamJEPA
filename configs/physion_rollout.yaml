@@ -34,13 +34,13 @@ max_videos: 200
 
 # ---- Pretrained model ----
 pretrain:
-  training_config: configs/imagenet_hjepa_mv.yaml
-  checkpoint: checkpoints/imagenet_hjepa_mv/best.pt
+  training_config: /research/d7/spc/yrwang5/V-JEPA/HamJEPA/configs/physion_hjepa_mv.yaml
+  checkpoint: /research/d7/spc/yrwang5/V-JEPA/HamJEPA/checkpoints/physion_hjepa_mv.pth
 
 # ---- Data ----
 data:
   # Physion++ test data CSV
-  dataset: ../V-JEPA/physion_csv/test_data.csv
+  dataset: /research/d7/spc/yrwang5/V-JEPA/V-JEPA/physion_csv/test_data.csv
 
   frames_per_clip: 16
   frame_step: 4

@@ -55,11 +55,11 @@ qp_variant: qp
 
 # ---- Pretrained model ----
 pretrain:
-  # Path to the training YAML config (used to reconstruct encoder architecture)
-  training_config: configs/imagenet_hjepa_mv.yaml
+  # Training config used for pretraining (reconstruct encoder architecture)
+  training_config: /research/d7/spc/yrwang5/V-JEPA/HamJEPA/configs/physion_hjepa_mv.yaml
 
-  # Path to the checkpoint file (.pt)
-  checkpoint: checkpoints/imagenet_hjepa_mv/best.pt
+  # Checkpoint from Physion++ pretraining
+  checkpoint: /research/d7/spc/yrwang5/V-JEPA/HamJEPA/checkpoints/physion_hjepa_mv.pth
 
   # Key in checkpoint dict for encoder state_dict
   checkpoint_key: encoder
@@ -67,11 +67,10 @@ pretrain:
 # ---- Data ----
 data:
   # Physion++ readout data CSV (for training the probe)
-  # Generate with: python ../V-JEPA/scripts/prepare_physion_data.py
-  dataset_train: ../V-JEPA/physion_csv/readout_data.csv
+  dataset_train: /research/d7/spc/yrwang5/V-JEPA/V-JEPA/physion_csv/readout_data.csv
 
   # Physion++ test data CSV (for final evaluation)
-  dataset_val: ../V-JEPA/physion_csv/test_data.csv
+  dataset_val: /research/d7/spc/yrwang5/V-JEPA/V-JEPA/physion_csv/test_data.csv
 
   # Video clip parameters (same as V-JEPA)
   frames_per_clip: 16
