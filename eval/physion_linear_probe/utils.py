@@ -92,7 +92,17 @@ class PhysionFrameTransform:
             else:
                 buffer = item
 
-        # buffer should now be a tensor [C, T, H, W]
+        # Convert numpy → tensor if needed (PhysionDataset returns numpy)
+        if isinstance(buffer, np.ndarray):
+            # decord returns [T, H, W, C] → permute to [C, T, H, W]
+            if buffer.ndim == 4 and buffer.shape[-1] == 3:
+                buffer = torch.from_numpy(buffer).permute(3, 0, 1, 2)  # [C,T,H,W]
+            elif buffer.ndim == 4 and buffer.shape[1] == 3:
+                buffer = torch.from_numpy(buffer)  # already [T,C,H,W] → permute
+                buffer = buffer.permute(1, 0, 2, 3)  # [C,T,H,W]
+            else:
+                buffer = torch.from_numpy(buffer)
+
         if not isinstance(buffer, torch.Tensor):
             raise TypeError(f"Expected tensor, got {type(buffer)}")
 
