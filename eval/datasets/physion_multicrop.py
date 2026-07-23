@@ -186,23 +186,34 @@ class PhysionMultiCrop(Dataset):
         return views, 0, -1
 
 
-class VideoBlockSampler(torch.utils.data.Sampler):
+class VideoBatchSampler(torch.utils.data.Sampler):
     """
-    Sampler that shuffles video blocks, not individual frames.
+    Yields BATCHES of indices, each batch containing frames from a SINGLE video.
 
-    Each video forms a contiguous block of indices. Per epoch, we:
-      1. Shuffle the list of video blocks
-      2. Yield all frame indices within each block sequentially
+    1. Shuffle the list of video blocks
+    2. For each video, split its frames into batch_size chunks
+    3. Collect all batches, shuffle them
+    4. Yield batches one at a time
 
-    This ensures consecutive __getitem__ calls from the same worker
-    read from the same video → VideoReader stays open → fast MP4 access.
+    This ensures every batch stays within one video → VideoReader opens once
+    per batch → sequential frame reads → ~1ms/frame instead of ~500ms/frame.
     """
 
-    def __init__(self, dataset: PhysionMultiCrop, shuffle: bool = True, seed: int = 0):
+    def __init__(self, dataset: PhysionMultiCrop, batch_size: int,
+                 shuffle: bool = True, seed: int = 0, drop_last: bool = False):
         self.dataset = dataset
+        self.batch_size = batch_size
         self.shuffle = shuffle
         self.seed = seed
+        self.drop_last = drop_last
         self.epoch = 0
+
+        # Pre-compute total batches
+        total = 0
+        for start, end in dataset._video_blocks:
+            n = end - start
+            total += n // batch_size if drop_last else (n + batch_size - 1) // batch_size
+        self._num_batches = total
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
@@ -210,13 +221,29 @@ class VideoBlockSampler(torch.utils.data.Sampler):
     def __iter__(self):
         g = torch.Generator()
         g.manual_seed(self.seed + self.epoch)
+
         blocks = list(self.dataset._video_blocks)
         if self.shuffle:
             perm = torch.randperm(len(blocks), generator=g).tolist()
             blocks = [blocks[p] for p in perm]
+
+        # Build all batches (each batch = indices from ONE video only)
+        all_batches = []
         for start, end in blocks:
-            for i in range(start, end):
-                yield i
+            indices = list(range(start, end))
+            for i in range(0, len(indices), self.batch_size):
+                batch = indices[i:i + self.batch_size]
+                if len(batch) == self.batch_size or not self.drop_last:
+                    all_batches.append(batch)
+
+        # Shuffle batches (different videos are interleaved, but each batch
+        # is internally contiguous from one video)
+        if self.shuffle:
+            perm = torch.randperm(len(all_batches), generator=g).tolist()
+            all_batches = [all_batches[p] for p in perm]
+
+        for batch in all_batches:
+            yield batch
 
     def __len__(self):
-        return len(self.dataset)
+        return self._num_batches

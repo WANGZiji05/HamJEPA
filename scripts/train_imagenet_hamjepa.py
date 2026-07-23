@@ -232,11 +232,16 @@ def main():
             loader_kwargs["prefetch_factor"] = int(prefetch_factor)
         loader_kwargs["worker_init_fn"] = _worker_init_fn
 
-    # Use VideoBlockSampler for Physion++ datasets to keep VideoReaders open
+    # Use VideoBatchSampler for Physion++ datasets (keeps each batch in one video)
     if hasattr(dataset, '_video_blocks'):
-        from eval.datasets.physion_multicrop import VideoBlockSampler
-        sampler = VideoBlockSampler(dataset, shuffle=True, seed=seed)
-        loader = DataLoader(dataset, sampler=sampler, **loader_kwargs)
+        from eval.datasets.physion_multicrop import VideoBatchSampler
+        batch_sampler = VideoBatchSampler(dataset, batch_size=batch_size,
+                                          shuffle=True, seed=seed, drop_last=drop_last)
+        loader = DataLoader(dataset, batch_sampler=batch_sampler,
+                            num_workers=num_workers, pin_memory=pin_memory,
+                            persistent_workers=persistent_workers,
+                            prefetch_factor=prefetch_factor,
+                            worker_init_fn=_worker_init_fn)
     else:
         loader_kwargs["shuffle"] = True
         loader = DataLoader(dataset, **loader_kwargs)
@@ -487,8 +492,8 @@ def main():
 
     for epoch in range(start_epoch, num_epochs + 1):
         print(f"\n{'#'*60}\n# EPOCH {epoch}/{num_epochs}\n{'#'*60}")
-        if hasattr(loader, 'sampler') and hasattr(loader.sampler, 'set_epoch'):
-            loader.sampler.set_epoch(epoch)
+        if hasattr(loader, 'batch_sampler') and hasattr(loader.batch_sampler, 'set_epoch'):
+            loader.batch_sampler.set_epoch(epoch)
         epoch_idx0 = epoch - 1
 
         if lambda_reg_warmup_epochs > 0 and epoch_idx0 < lambda_reg_warmup_epochs:
